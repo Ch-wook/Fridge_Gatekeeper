@@ -20,6 +20,7 @@ export default function ChatPage() {
   const requestRef = useRef(null)
   const inputRef = useRef(null)
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }, [messages, busy])
+  useEffect(() => { if (!busy && messages.length) inputRef.current?.focus() }, [busy, messages.length])
   useEffect(() => () => requestRef.current?.abort(), [])
 
   async function request(payload) {
@@ -37,7 +38,6 @@ export default function ChatPage() {
     } finally {
       requestRef.current = null
       setBusy(false)
-      inputRef.current?.focus()
     }
   }
   function send(text) {

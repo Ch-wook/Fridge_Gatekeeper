@@ -1,6 +1,16 @@
 param()
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
+$localJdk = Get-ChildItem -Path (Join-Path $projectRoot '.local/jdk-21*') -Directory -ErrorAction SilentlyContinue |
+    Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'bin/javac.exe') } | Select-Object -First 1
+if ($localJdk) {
+    $env:JAVA_HOME = $localJdk.FullName
+    $env:Path = "$env:JAVA_HOME/bin;$env:Path"
+}
+$localConnection = Join-Path $projectRoot '.local/mysql/connection.json'
+if (-not $env:DB_URL -and (Test-Path -LiteralPath $localConnection)) {
+    $env:DB_URL = (Get-Content -LiteralPath $localConnection -Raw -Encoding UTF8 | ConvertFrom-Json).url
+}
 $envFile = Join-Path $projectRoot '.env'
 # .env는 Spring Boot가 자동으로 읽지 않으므로 이 실행 스크립트에서 읽습니다.
 # 비밀 값을 화면에 출력하거나 문자열을 명령으로 실행하지 않습니다.

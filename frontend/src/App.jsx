@@ -15,6 +15,7 @@ export default function App() {
   const path = usePath()
   const [session, setSession] = useState({ loading: true, user: null, error: null })
   const [authNotice, setAuthNotice] = useState('')
+  const [authEmail, setAuthEmail] = useState('')
   const [logoutError, setLogoutError] = useState(null)
   const [loggingOut, setLoggingOut] = useState(false)
   const [attempt, setAttempt] = useState(0)
@@ -38,8 +39,14 @@ export default function App() {
   function onLogin(user) {
     setSession({ loading: false, user, error: null })
     setAuthNotice('')
+    setAuthEmail('')
     setLogoutError(null)
     navigate('/')
+  }
+  function onRegistered(email) {
+    setAuthEmail(email)
+    setAuthNotice('가입이 완료되었어요. 입력한 이메일과 비밀번호로 로그인해 주세요.')
+    navigate('/login', { replace: true })
   }
   async function logout() {
     setLoggingOut(true)
@@ -54,7 +61,7 @@ export default function App() {
   }
   if (session.loading) return <div className="auth-form-wrap"><Loading label="내 냉장고를 준비하고 있어요…" /></div>
   if (session.error) return <div className="auth-form-wrap"><div className="auth-card"><h1>냉장고 지킴이</h1><ErrorBox error={session.error} onRetry={() => { setSession({ loading: true, user: null, error: null }); setAttempt((value) => value + 1) }} /></div></div>
-  if (!session.user) return <AuthPage key={path === '/signup' ? 'signup' : 'login'} signup={path === '/signup'} onLogin={onLogin} notice={authNotice} />
+  if (!session.user) return <AuthPage key={path === '/signup' ? 'signup' : 'login'} signup={path === '/signup'} onLogin={onLogin} onRegistered={onRegistered} initialEmail={authEmail} notice={authNotice} />
   const current = navigation.find((item) => item.to === path)
   let page
   if (path === '/ingredients') page = <IngredientsPage />

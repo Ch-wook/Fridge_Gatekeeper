@@ -5,8 +5,10 @@ const subscribe = (callback) => {
   return () => window.removeEventListener('popstate', callback)
 }
 export function usePath() { return useSyncExternalStore(subscribe, () => window.location.pathname) }
-export function navigate(path) {
-  if (window.location.pathname !== path) window.history.pushState(null, '', path)
+export function useSearch() { return useSyncExternalStore(subscribe, () => window.location.search) }
+export function navigate(path, { replace = false, scroll = true } = {}) {
+  const target = new URL(path, window.location.href)
+  if (target.href !== window.location.href) window.history[replace ? 'replaceState' : 'pushState'](null, '', target)
   window.dispatchEvent(new PopStateEvent('popstate'))
-  window.scrollTo({ top: 0 })
+  if (scroll) window.scrollTo({ top: 0 })
 }

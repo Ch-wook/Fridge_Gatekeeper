@@ -5,7 +5,7 @@ import { statuses } from '../lib/format.js'
 export function Link({ to, children, onClick, ...props }) {
   return <a href={to} {...props} onClick={(event) => {
     onClick?.(event)
-    if (!event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+    if (!event.defaultPrevented && (!props.target || props.target === '_self') && props.download === undefined && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && new URL(to, window.location.href).origin === window.location.origin) {
       event.preventDefault()
       navigate(to)
     }

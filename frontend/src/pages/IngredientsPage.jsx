@@ -5,11 +5,14 @@ import { Dialog, EmptyState, ErrorBox, Loading, PageHeading, SelectOptions } fro
 import useResource from '../hooks/useResource.js'
 import { categories, locations, statuses } from '../lib/format.js'
 import { api } from '../services/api.js'
+import { navigate, useSearch } from '../lib/router.js'
 
 export default function IngredientsPage() {
   const [sort, setSort] = useState('expiration')
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState(() => new URLSearchParams(window.location.search).get('status') || '')
+  const query = useSearch()
+  const requestedStatus = new URLSearchParams(query).get('status')
+  const status = requestedStatus === 'TODAY' || Object.hasOwn(statuses, requestedStatus) ? requestedStatus : ''
   const [category, setCategory] = useState('')
   const [storage, setStorage] = useState('')
   const [editor, setEditor] = useState(null)
@@ -19,6 +22,12 @@ export default function IngredientsPage() {
   const [notice, setNotice] = useState('')
   const { data, loading, error, reload } = useResource(`/ingredients?sort=${sort}`)
   const filtered = data?.filter((item) => item.name.toLocaleLowerCase('ko').includes(search.trim().toLocaleLowerCase('ko')) && (!status || (status === 'TODAY' ? item.daysUntilExpiration === 0 : item.status === status)) && (!category || item.category === category) && (!storage || item.storageType === storage)) || []
+  function setStatus(value) {
+    const params = new URLSearchParams(query)
+    if (value) params.set('status', value)
+    else params.delete('status')
+    navigate(`/ingredients${params.size ? `?${params}` : ''}`, { scroll: false })
+  }
   function saved(message) { setEditor(null); setNotice(message); reload() }
   async function remove() {
     setDeleteBusy(true)

@@ -15,6 +15,10 @@ export default defineConfig([
     },
   },
   {
+    files: ['tests/**/*.js'],
+    languageOptions: { globals: globals.node },
+  },
+  {
     files: ['src/**/*.{js,jsx}'],
     extends: [reactHooks.configs.flat.recommended, reactRefresh.configs.vite],
     languageOptions: {

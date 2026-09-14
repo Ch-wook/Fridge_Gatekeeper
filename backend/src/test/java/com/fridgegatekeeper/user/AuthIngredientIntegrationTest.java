@@ -173,6 +173,58 @@ class AuthIngredientIntegrationTest {
             .andExpect(jsonPath("$.expiredIngredients.length()").value(0));
     }
 
+    @Test void unsupportedRequestMediaTypeKeepsItsClientErrorStatus() throws Exception {
+        Browser owner = login("owner@example.com");
+        mvc.perform(secure(post("/api/ingredients"), owner)
+            .contentType(MediaType.APPLICATION_XML).content("<ingredient>계란</ingredient>"))
+            .andExpect(status().isUnsupportedMediaType())
+            .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
+        mvc.perform(get("/api/ingredients").session(owner.session()).accept(MediaType.APPLICATION_XML))
+            .andExpect(status().isNotAcceptable());
+        assertThat(ingredients.count()).isZero();
+    }
+
+    @Test void seededRecipeListAndDetailUseTheLoggedInUsersStockAndSelectedServings() throws Exception {
+        Browser owner = login("owner@example.com");
+        create(owner, "달걀", "2026-09-09");
+        mvc.perform(secure(post("/api/ingredients"), owner).content(
+            ingredient("밥", "2026-09-12", null).replace("\"quantity\":6", "\"quantity\":0.25")
+                .replace("PIECE", "KILOGRAM")))
+            .andExpect(status().isCreated());
+
+        mvc.perform(get("/api/recipes/recommendations?servings=1").session(owner.session()))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(16))
+            .andExpect(jsonPath("$[0].matchedCount").value(2));
+        mvc.perform(get("/api/recipes/16?servings=1").session(owner.session()))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("간장 계란밥"))
+            .andExpect(jsonPath("$.servings").value(1))
+            .andExpect(jsonPath("$.matchedCount").value(2))
+            .andExpect(jsonPath("$.missingCount").value(2))
+            .andExpect(jsonPath("$.requiredIngredients[0].requiredQuantity").value(200))
+            .andExpect(jsonPath("$.requiredIngredients[0].availableQuantity").value(250))
+            .andExpect(jsonPath("$.requiredIngredients[0].missingQuantity").value(0))
+            .andExpect(jsonPath("$.urgentIngredients[0]").value("밥"))
+            .andExpect(jsonPath("$.steps.length()").value(3))
+            .andExpect(jsonPath("$.nutrition.perServing").value(true));
+        mvc.perform(get("/api/recipes/16?servings=2").session(owner.session()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.requiredIngredients[0].requiredQuantity").value(400))
+            .andExpect(jsonPath("$.requiredIngredients[0].missingQuantity").value(150))
+            .andExpect(jsonPath("$.missingCount").value(3));
+
+        Browser stranger = login("stranger@example.com");
+        mvc.perform(get("/api/recipes/16?servings=1").session(stranger.session()))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.matchedCount").value(0))
+            .andExpect(jsonPath("$.missingCount").value(4))
+            .andExpect(jsonPath("$.urgentIngredients.length()").value(0));
+        mvc.perform(get("/api/recipes/999999").session(owner.session()))
+            .andExpect(status().isNotFound());
+        mvc.perform(get("/api/recipes/16?servings=3").session(owner.session()))
+            .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/recipes/recommendations"))
+            .andExpect(status().isUnauthorized());
+    }
+
     private record Browser(MockHttpSession session, String token, String headerName) { }
 
     private Browser anonymous() throws Exception { return refresh(new MockHttpSession()); }

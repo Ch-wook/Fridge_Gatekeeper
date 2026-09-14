@@ -17,8 +17,8 @@
 | GET | /dashboard | {total,safeCount,soonCount,expiredCount,todayCount,expiringIngredients,expiredIngredients,today} |
 | GET | /recipes/recommendations?servings=1 | 추천 배열. 인분은 1 또는 2 |
 | GET | /recipes/{id}?servings=2 | 추천과 같은 형식의 상세 |
-| GET | /ai/status | {available} |
-| POST | /ai/chat | {message,servings,history:[{role,content}]} → {reply,source,recommendedRecipes} |
+| GET | /ai/status | {available}. 서버 API 키 설정 여부이며 실제 연결 성공을 보장하지 않음 |
+| POST | /ai/chat | {message,servings,history:[{role,content}]} → {reply,source,recommendedRecipes}. 추천 최대 3개 |
 
 식재료 요청: name,category,quantity,unit,purchaseDate,expirationDate,storageType. 수정에는 version 필수.
 응답에는 id,version,status,daysUntilExpiration이 추가됩니다. 날짜는 YYYY-MM-DD입니다.
@@ -28,5 +28,13 @@ status: SAFE/SOON/EXPIRED, 단위 및 카테고리는 [DB 설계](../database/RE
 재료 상세: name,requiredQuantity,availableQuantity,missingQuantity,unit,urgent,unitMismatch.
 영양: calories,protein,carbs,fat,perServing=true,estimated=true. 모든 영양값은 1인분당 추정치입니다.
 source는 OPENAI 또는 LOCAL이며 LOCAL은 API 키가 없을 때의 규칙 기반 추천입니다.
+
+채팅 API는 모두 인증 세션이 필요하며 POST에는 CSRF 토큰이 필요합니다.
+message는 공백만으로 구성될 수 없고 최대 2,000자, servings는 1 또는 2입니다.
+history는 최대 10개이며 생략·null은 빈 목록으로 처리합니다. 각 항목의 role은 user 또는 assistant이고,
+content는 공백만으로 구성될 수 없는 최대 2,000자의 문자열이어야 합니다. null 항목은 허용하지 않습니다.
+recommendedRecipes는 서버가 현재 사용자 재고로 계산한 위 추천 형식의 배열이며 최대 3개, 해당 메뉴가 없으면 빈 배열입니다.
+available은 비어 있지 않은 API 키 설정 여부만 표시하며 키 검증이나 외부 API 사전 호출은 하지 않습니다.
+OpenAI 호출 실패 시 자동 LOCAL 전환 없이 503 오류를 반환합니다. 조건 처리 범위와 오류 코드는 [STEP 10](step-10.md)을 참고하세요.
 
 오류 응답: {code,message,fieldErrors}. 검증400, 인증401, CSRF403, 없음404, 중복·수정충돌409, AI 서비스 장애503을 구분합니다.

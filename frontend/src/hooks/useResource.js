@@ -10,8 +10,8 @@ export default function useResource(path) {
     if (!path) return
     const controller = new AbortController()
     api(path, { signal: controller.signal }).then(
-      (data) => setResult({ key, data, error: null }),
-      (error) => { if (error.name !== 'AbortError') setResult({ key, data: null, error }) },
+      (data) => { if (!controller.signal.aborted) setResult({ key, data, error: null }) },
+      (error) => { if (!controller.signal.aborted && error.name !== 'AbortError') setResult({ key, data: null, error }) },
     )
     return () => controller.abort()
   }, [path, key])
