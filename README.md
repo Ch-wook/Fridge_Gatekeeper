@@ -4,6 +4,8 @@
 Java 21 / Spring Boot 4.1.1 / Spring Data JPA / MySQL 8 / React 19 / Vite 8을 사용합니다.
 Docker 환경은 MySQL 8.4, 현재 Windows 로컬 환경은 설치된 MySQL 8.0.44를 사용합니다.
 
+**개발 작업을 이어서 진행한다면:** [Codex 인수인계 문서](docs/CODEX_HANDOFF.md)에서 구현 이력, 구조, 실행 환경, 검증 결과와 남은 범위를 먼저 확인하세요. 저장소 작업 안내는 [AGENTS.md](AGENTS.md)에 있습니다.
+
 ## 주요 기능
 
 - 회원가입·로그인·로그아웃, 사용자별 냉장고 분리, 비밀번호 BCrypt 해시, 세션·CSRF 보호
