@@ -22,7 +22,7 @@ export function ServingControl({ value, onChange, disabled = false }) {
 export function SelectOptions({ values }) { return Object.entries(values).map(([value, label]) => <option value={value} key={value}>{label}</option>) }
 
 // 브라우저 기본 dialog는 포커스를 안에 유지하고 Escape로 닫는 동작을 제공합니다.
-export function Dialog({ title, children, onClose, busy = false, wide = false }) {
+export function Dialog({ title, children, onClose, busy = false, wide = false, className = '' }) {
   const ref = useRef(null)
   const titleId = useId()
   useEffect(() => {
@@ -31,7 +31,7 @@ export function Dialog({ title, children, onClose, busy = false, wide = false })
     dialog.showModal()
     return () => { dialog.close(); previousFocus?.focus() }
   }, [])
-  return <dialog ref={ref} className={`dialog ${wide ? 'wide' : ''}`} aria-labelledby={titleId} onCancel={(event) => { event.preventDefault(); if (!busy) onClose() }}>
+  return <dialog ref={ref} className={`dialog ${wide ? 'wide' : ''} ${className}`} aria-labelledby={titleId} onCancel={(event) => { event.preventDefault(); if (!busy) onClose() }}>
     <div className="dialog-header"><h2 id={titleId}>{title}</h2><button className="icon-button" aria-label="닫기" onClick={onClose} disabled={busy}>×</button></div>{children}
   </dialog>
 }

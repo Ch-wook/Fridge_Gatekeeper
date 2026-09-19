@@ -14,12 +14,12 @@ if (-not $env:DB_URL -and (Test-Path -LiteralPath $localConnection)) {
 $envFile = Join-Path $projectRoot '.env'
 # .env는 Spring Boot가 자동으로 읽지 않으므로 이 실행 스크립트에서 읽습니다.
 # 비밀 값을 화면에 출력하거나 문자열을 명령으로 실행하지 않습니다.
-$allowed = @('DB_URL','DB_USERNAME','DB_PASSWORD','SERVER_PORT','SESSION_COOKIE_SECURE','OPENAI_API_KEY','OPENAI_MODEL','OPENAI_BASE_URL')
+$allowed = @('DB_URL','DB_USERNAME','DB_PASSWORD','SERVER_PORT','SERVER_ADDRESS','SESSION_COOKIE_SECURE','OPENAI_API_KEY','OPENAI_MODEL','OPENAI_BASE_URL','AI_USER_REQUESTS_PER_MINUTE','AI_REQUESTS_PER_MINUTE','AI_REQUESTS_PER_DAY','AI_CONCURRENT_REQUESTS')
 if (Test-Path -LiteralPath $envFile) {
     foreach ($line in (Get-Content -Encoding UTF8 -LiteralPath $envFile)) {
         $entry = $line.Trim()
         if (-not $entry -or $entry.StartsWith('#')) { continue }
-        $parts = $entry.Split(@('='), 2)
+        $parts = $entry -split '=', 2
         if ($parts.Length -ne 2) { continue }
         $key = $parts[0].Trim()
         if ($key -notin $allowed) { continue }

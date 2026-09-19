@@ -15,7 +15,7 @@ public class Ingredient {
     @Column(nullable=false, precision=12, scale=3) private BigDecimal quantity;
     @Enumerated(EnumType.STRING) @Column(nullable=false, length=20) private Unit unit;
     @Column(nullable=false) private LocalDate purchaseDate;
-    @Column(nullable=false) private LocalDate expirationDate;
+    @Column private LocalDate expirationDate;
     @Enumerated(EnumType.STRING) @Column(nullable=false, length=20) private StorageType storageType;
     @Version private long version;
     protected Ingredient() {}

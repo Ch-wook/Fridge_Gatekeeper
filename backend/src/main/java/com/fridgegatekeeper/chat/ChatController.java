@@ -19,7 +19,7 @@ public class ChatController {
     @GetMapping("/status")
     public ChatDtos.Status status(Authentication authentication) {
         CurrentUser.id(authentication);
-        return new ChatDtos.Status(chat.available());
+        return new ChatDtos.Status(chat.available(), chat.model());
     }
 
     @PostMapping("/chat")

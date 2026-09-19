@@ -44,13 +44,11 @@ class OpenAiClientTest {
     private String baseUrl;
 
     @BeforeEach void startLocalServer() throws Exception {
-        responseBody.set("""
-            {"status":"completed","output":[
-              {"type":"reasoning","summary":[]},
-              {"type":"message","role":"assistant","content":[
-                {"type":"output_text","text":"계란을 먼저 활용해요."},
-                {"type":"output_text","text":"밥은 추가로 준비해 주세요."}]}]}
-            """);
+        responseBody.set(json.writeValueAsString(java.util.Map.of("status", "completed", "output", List.of(
+            java.util.Map.of("type", "reasoning", "summary", List.of()),
+            java.util.Map.of("type", "message", "role", "assistant", "content", List.of(
+                java.util.Map.of("type", "output_text", "text", "{\"reply\":" + json.writeValueAsString("계란을 먼저 활용해요.\n밥은 추가로 준비해 주세요.") + ","),
+                java.util.Map.of("type", "output_text", "text", "\"recipeIds\":[]}")))))));
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/responses", exchange -> {
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
@@ -71,29 +69,35 @@ class OpenAiClientTest {
         var request = new ChatDtos.Request("  두 명이 먹을 메뉴는?  ", 2,
             List.of(new ChatDtos.Message("user", "이전 질문"), new ChatDtos.Message("assistant", "이전 답변")));
 
-        String reply = client.reply(request, List.of(ingredient()), List.of());
+        String reply = client.reply(request, List.of(ingredient()), List.of()).reply();
 
         assertThat(reply).isEqualTo("계란을 먼저 활용해요.\n밥은 추가로 준비해 주세요.");
         assertThat(requestAuthorization.get()).isEqualTo("Bearer test-key-never-real");
         JsonNode sent = json.readTree(requestBody.get());
-        assertThat(sent.path("model").asString()).isEqualTo("gpt-4.1-mini");
+        assertThat(sent.path("model").asString()).isEqualTo("gpt-5-mini");
         assertThat(sent.path("store").asBoolean()).isFalse();
-        assertThat(sent.path("max_output_tokens").asInt()).isEqualTo(1600);
-        assertThat(sent.path("instructions").asString()).contains("EXPIRED", "unitMismatch");
+        assertThat(sent.path("max_output_tokens").asInt()).isEqualTo(2400);
+        assertThat(sent.path("reasoning").path("effort").asString()).isEqualTo("low");
+        assertThat(sent.path("text").path("verbosity").asString()).isEqualTo("low");
+        assertThat(sent.path("text").path("format").path("type").asString()).isEqualTo("json_schema");
+        assertThat(sent.path("text").path("format").path("strict").asBoolean()).isTrue();
+        assertThat(sent.has("temperature")).isFalse();
+        assertThat(sent.path("instructions").asString()).contains("만료", "unitMismatch");
         JsonNode input = sent.path("input");
         assertThat(input.size()).isEqualTo(4);
         assertThat(input.get(1).path("role").asString()).isEqualTo("user");
         assertThat(input.get(2).path("role").asString()).isEqualTo("assistant");
         assertThat(input.get(3).path("content").asString()).isEqualTo("두 명이 먹을 메뉴는?");
         String context = input.get(0).path("content").asString();
-        assertThat(context).contains("계란", "SOON", "\"servings\":2")
+        assertThat(context).contains("계란", "임박", "3개", "\"servings\":2")
+            .doesNotContain("PIECE", "SOON", "3.000")
             .doesNotContain("email", "password", "purchaseDate", "version", "userId", "test-key-never-real");
     }
 
     @Test void acceptsVersionedBaseUrlWithoutDuplicatingV1() {
         OpenAiClient client = new OpenAiClient(json, HttpClient.newHttpClient(), "test-key-never-real",
             "gpt-4.1-mini", baseUrl + "/v1/", Duration.ofSeconds(3));
-        assertThat(client.reply(request(), List.of(), List.of())).contains("계란을 먼저");
+        assertThat(client.reply(request(), List.of(), List.of()).reply()).contains("계란을 먼저");
     }
 
     @Test void unconfiguredStatusDoesNotSendRequests() {
@@ -106,7 +110,7 @@ class OpenAiClientTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"401,AI_CONFIGURATION_ERROR", "403,AI_CONFIGURATION_ERROR", "429,AI_RATE_LIMITED", "500,AI_UNAVAILABLE", "302,AI_UNAVAILABLE"})
+    @CsvSource({"400,AI_CONFIGURATION_ERROR", "401,AI_CONFIGURATION_ERROR", "403,AI_CONFIGURATION_ERROR", "404,AI_CONFIGURATION_ERROR", "429,AI_RATE_LIMITED", "500,AI_UNAVAILABLE", "302,AI_UNAVAILABLE"})
     void upstreamFailuresUseSafeErrorsAndDoNotExposeProviderBody(int status, String code) {
         responseStatus.set(status);
         responseBody.set("{\"error\":\"sensitive server details test-key-never-real\"}");
@@ -124,6 +128,31 @@ class OpenAiClientTest {
         assertFailure("AI_INCOMPLETE_RESPONSE");
     }
 
+    @Test void quotaFailuresExplainBillingWithoutLeakingRawErrorDetails() {
+        responseStatus.set(429);
+        responseBody.set("{\"error\":{\"type\":\"insufficient_quota\",\"code\":\"insufficient_quota\",\"message\":\"test-key-never-real\"}}");
+        assertThatThrownBy(() -> client().reply(request(), List.of(), List.of()))
+            .isInstanceOfSatisfying(ApiException.class, error -> {
+                assertThat(error.getCode()).isEqualTo("AI_QUOTA_EXCEEDED");
+                assertThat(error.getMessage()).contains("결제 잔액").doesNotContain("test-key-never-real");
+            });
+        responseBody.set("not JSON and test-key-never-real");
+        assertFailure("AI_RATE_LIMITED");
+    }
+
+    @Test void rejectsPlainHttpForRemoteServersBeforeSendingCredentials() {
+        assertThatThrownBy(() -> new OpenAiClient(json, HttpClient.newHttpClient(), "test-key-never-real",
+            "gpt-5-mini", "http://example.com", Duration.ofSeconds(3)))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("HTTPS");
+        assertThat(requestBody.get()).isNull();
+    }
+
+    @Test void olderNonReasoningModelDoesNotReceiveGpt5Parameters() {
+        new OpenAiClient(json, HttpClient.newHttpClient(), "test-key-never-real", "gpt-4.1-mini", baseUrl,
+            Duration.ofSeconds(3)).reply(request(), List.of(), List.of());
+        assertThat(json.readTree(requestBody.get()).has("reasoning")).isFalse();
+    }
+
     @Test void emptyAndMalformedResponsesAreNotReportedAsSuccess() {
         responseBody.set("{\"status\":\"completed\",\"output\":[]}");
         assertFailure("AI_EMPTY_RESPONSE");
@@ -138,7 +167,7 @@ class OpenAiClientTest {
             {"status":"completed","output":[{"type":"message","role":"assistant",
              "content":[{"type":"refusal","refusal":"그 요청은 도와드릴 수 없어요."}]}]}
             """);
-        assertThat(client().reply(request(), List.of(), List.of())).isEqualTo("그 요청은 도와드릴 수 없어요.");
+        assertThat(client().reply(request(), List.of(), List.of()).reply()).isEqualTo("그 요청은 도와드릴 수 없어요.");
     }
 
     @Test void networkTimeoutReturnsRetryableErrorAndRequestHasConfiguredDeadline() throws Exception {
@@ -164,19 +193,36 @@ class OpenAiClientTest {
         }
     }
 
+    @Test void unknownExpirationIsSentWithoutInventingAnExpirationDate() {
+        var stock = new IngredientResponse(1L, "계란", Category.OTHER, BigDecimal.ONE, Unit.PIECE,
+            LocalDate.of(2026, 9, 1), null, StorageType.FRIDGE, 0, ExpiryStatus.UNKNOWN, null);
+        assertThat(client().reply(request(), List.of(stock), List.of()).reply()).isNotBlank();
+        assertThat(requestBody.get()).contains("기한 미등록", "1개").doesNotContain("UNKNOWN", "PIECE");
+    }
+
+    @Test void rejectsInventedRecipeIdsAndMalformedStructuredAnswers() {
+        for (String value : List.of("{\"reply\":\"추천\",\"recipeIds\":[9999]}",
+            "{\"reply\":\"추천\",\"recipeIds\":[1.5]}", "{\"reply\":\"추천\"}", "{\"reply\":\" \",\"recipeIds\":[]}")) {
+            responseBody.set(json.writeValueAsString(java.util.Map.of("status", "completed", "output", List.of(
+                java.util.Map.of("type", "message", "role", "assistant", "content", List.of(
+                    java.util.Map.of("type", "output_text", "text", value)))))));
+            assertFailure("AI_INVALID_RESPONSE");
+        }
+    }
+
     private void assertFailure(String code) {
         assertThatThrownBy(() -> client().reply(request(), List.of(), List.of()))
             .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.getCode()).isEqualTo(code));
     }
 
     private OpenAiClient client() {
-        return new OpenAiClient(json, HttpClient.newHttpClient(), "test-key-never-real", "gpt-4.1-mini", baseUrl, Duration.ofSeconds(3));
+        return new OpenAiClient(json, HttpClient.newHttpClient(), "test-key-never-real", "gpt-5-mini", baseUrl, Duration.ofSeconds(3));
     }
 
     private static ChatDtos.Request request() { return new ChatDtos.Request("계란 요리", 1, List.of()); }
 
     private static IngredientResponse ingredient() {
         return new IngredientResponse(99L, "계란", Category.OTHER, BigDecimal.valueOf(3), Unit.PIECE,
-            LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 12), StorageType.FRIDGE, 10, ExpiryStatus.SOON, 0);
+            LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 12), StorageType.FRIDGE, 10, ExpiryStatus.SOON, 0L);
     }
 }

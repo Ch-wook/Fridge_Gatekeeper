@@ -28,7 +28,7 @@ public class IngredientService {
 
     public List<IngredientResponse> list(Long userId, String sort) {
         LocalDate today = LocalDate.now(clock);
-        Comparator<Ingredient> expiration = Comparator.comparing(Ingredient::getExpirationDate)
+        Comparator<Ingredient> expiration = Comparator.comparing(Ingredient::getExpirationDate, Comparator.nullsLast(Comparator.naturalOrder()))
             .thenComparing(Ingredient::getName).thenComparing(Ingredient::getId);
         Comparator<Ingredient> order = switch (sort) {
             case "expiration" -> expiration;
@@ -84,18 +84,18 @@ public class IngredientService {
             ApiException.notFound("식재료를 찾을 수 없습니다."));
     }
 
-    private void validateDates(IngredientRequest request) {
+    void validateDates(IngredientRequest request) {
         Map<String, String> errors = new LinkedHashMap<>();
         LocalDate today = LocalDate.now(clock);
         if (request.purchaseDate().isAfter(today)) errors.put("purchaseDate", "구매 날짜는 오늘 이후일 수 없습니다.");
-        if (request.purchaseDate().isAfter(request.expirationDate())) {
+        if (request.expirationDate() != null && request.purchaseDate().isAfter(request.expirationDate())) {
             errors.put("expirationDate", "유통기한은 구매 날짜와 같거나 이후여야 합니다.");
         }
         // MySQL DATE의 지원 범위도 API 단계에서 검사합니다.
         if (request.purchaseDate().getYear() < 1000 || request.purchaseDate().getYear() > 9999) {
             errors.put("purchaseDate", "날짜의 연도는 1000~9999 범위여야 합니다.");
         }
-        if (request.expirationDate().getYear() < 1000 || request.expirationDate().getYear() > 9999) {
+        if (request.expirationDate() != null && (request.expirationDate().getYear() < 1000 || request.expirationDate().getYear() > 9999)) {
             errors.put("expirationDate", "날짜의 연도는 1000~9999 범위여야 합니다.");
         }
         if (!errors.isEmpty()) {

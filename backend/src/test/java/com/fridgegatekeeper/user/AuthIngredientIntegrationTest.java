@@ -225,6 +225,128 @@ class AuthIngredientIntegrationTest {
             .andExpect(status().isUnauthorized());
     }
 
+    @Test void optionalExpirationSurvivesCrudSortingDashboardRecommendationsAndChat() throws Exception {
+        Browser owner = login("optional@example.com");
+        String noDate = ingredient("계란", null, null).replace("\"null\"", "null");
+        var result = mvc.perform(secure(post("/api/ingredients"), owner).content(noDate))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("UNKNOWN"))
+            .andExpect(jsonPath("$.expirationDate").value(org.hamcrest.Matchers.nullValue()))
+            .andExpect(jsonPath("$.daysUntilExpiration").value(org.hamcrest.Matchers.nullValue())).andReturn();
+        long id = ((Number) JsonPath.read(result.getResponse().getContentAsString(), "$.id")).longValue();
+        create(owner, "두부", "2026-09-09");
+        mvc.perform(get("/api/ingredients?sort=expiration").session(owner.session()))
+            .andExpect(status().isOk()).andExpect(jsonPath("$[0].name").value("두부"))
+            .andExpect(jsonPath("$[1].status").value("UNKNOWN"));
+        mvc.perform(get("/api/dashboard").session(owner.session())).andExpect(status().isOk())
+            .andExpect(jsonPath("$.total").value(2)).andExpect(jsonPath("$.safeCount").value(0))
+            .andExpect(jsonPath("$.unknownCount").value(1)).andExpect(jsonPath("$.todayCount").value(1));
+        mvc.perform(get("/api/recipes/16?servings=1").session(owner.session())).andExpect(status().isOk())
+            .andExpect(jsonPath("$.matchedCount").value(1)).andExpect(jsonPath("$.urgentIngredients").isEmpty());
+        mvc.perform(secure(post("/api/ai/chat"), owner).content("{\"message\":\"추천\",\"servings\":1,\"mode\":\"LOCAL\"}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.source").value("LOCAL"))
+            .andExpect(jsonPath("$.reply", org.hamcrest.Matchers.containsString("기한을 등록하지 않은")));
+        mvc.perform(secure(put("/api/ingredients/" + id), owner).content(ingredient("계란", "2026-09-20", 0L)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("SAFE"));
+        mvc.perform(secure(put("/api/ingredients/" + id), owner).content(
+            ingredient("계란", "2026-09-20", 1L).replace(",\"expirationDate\":\"2026-09-20\"", "")))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("UNKNOWN"));
+        mvc.perform(get("/api/ingredients/" + id).session(owner.session()))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.expirationDate").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test void batchCreatesAllRowsWithOptionalDatesAndKeepsUsersIsolated() throws Exception {
+        Browser owner = login("owner@example.com");
+        String rows = ingredient("계란", "2026-09-09", null) + "," +
+            ingredient("두부", "2026-09-20", null).replace("\"2026-09-20\"", "null");
+        mvc.perform(secure(post("/api/ingredients/batch"), owner).content(batch(java.util.UUID.randomUUID().toString(), rows)))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.length()").value(2))
+            .andExpect(jsonPath("$[0].name").value("계란")).andExpect(jsonPath("$[1].status").value("UNKNOWN"));
+        Browser stranger = login("stranger@example.com");
+        mvc.perform(get("/api/ingredients").session(stranger.session())).andExpect(status().isOk()).andExpect(jsonPath("$").isEmpty());
+        mvc.perform(get("/api/dashboard").session(owner.session())).andExpect(status().isOk())
+            .andExpect(jsonPath("$.total").value(2)).andExpect(jsonPath("$.unknownCount").value(1));
+    }
+
+    @Test void batchRejectsAnInvalidRowWithoutSavingAnyIngredients() throws Exception {
+        Browser owner = login("owner@example.com");
+        String valid = ingredient("계란", "2026-09-09", null);
+        for (String invalid : new String[] {
+            ingredient("두부", "2026-08-30", null), valid.replace("\"quantity\":6", "\"quantity\":0"), "null"
+        }) {
+            mvc.perform(secure(post("/api/ingredients/batch"), owner).content(batch(java.util.UUID.randomUUID().toString(), valid + "," + invalid)))
+                .andExpect(status().isBadRequest());
+            assertThat(ingredients.count()).isZero();
+        }
+    }
+
+    @Test void batchValidatesBoundsAndRequiresAuthenticationAndCsrf() throws Exception {
+        Browser anonymous = anonymous();
+        String row = ingredient("계란", "2026-09-09", null);
+        String body = batch(java.util.UUID.randomUUID().toString(), row);
+        mvc.perform(secure(post("/api/ingredients/batch"), anonymous).content(body)).andExpect(status().isUnauthorized());
+        Browser owner = login("owner@example.com");
+        mvc.perform(post("/api/ingredients/batch").session(owner.session()).contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isForbidden());
+        for (String bad : new String[] { batch(java.util.UUID.randomUUID().toString(), ""),
+            batch(java.util.UUID.randomUUID().toString(), String.join(",", java.util.Collections.nCopies(51, row))),
+            "{\"items\":[" + row + "]}", batch("not-a-uuid", row) }) {
+            mvc.perform(secure(post("/api/ingredients/batch"), owner).content(bad)).andExpect(status().isBadRequest());
+        }
+        assertThat(ingredients.count()).isZero();
+    }
+
+    @Test void batchRetryReturnsOriginalResponseAndDoesNotRecreateDeletedStock() throws Exception {
+        Browser owner = login("owner@example.com");
+        String key = java.util.UUID.randomUUID().toString();
+        String body = batch(key, ingredient("계란", "2026-09-09", null));
+        String response = mvc.perform(secure(post("/api/ingredients/batch"), owner).content(body))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        mvc.perform(secure(post("/api/ingredients/batch"), owner).content(body)).andExpect(status().isCreated())
+            .andExpect(content().json(response));
+        assertThat(ingredients.count()).isEqualTo(1);
+        mvc.perform(secure(post("/api/ingredients/batch"), owner).content(batch(key, ingredient("두부", "2026-09-09", null))))
+            .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("BATCH_REQUEST_CONFLICT"));
+        long id = ((Number) JsonPath.read(response, "$[0].id")).longValue();
+        mvc.perform(secure(delete("/api/ingredients/" + id), owner)).andExpect(status().isNoContent());
+        mvc.perform(secure(post("/api/ingredients/batch"), owner).content(body)).andExpect(status().isCreated())
+            .andExpect(content().json(response));
+        assertThat(ingredients.count()).isZero();
+    }
+
+    @Test void theSameBatchKeyBelongsToEachUserSeparately() throws Exception {
+        Browser owner = login("owner@example.com");
+        Browser stranger = login("stranger@example.com");
+        String body = batch(java.util.UUID.randomUUID().toString(), ingredient("계란", "2026-09-09", null));
+        String first = mvc.perform(secure(post("/api/ingredients/batch"), owner).content(body)).andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        String second = mvc.perform(secure(post("/api/ingredients/batch"), stranger).content(body)).andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        assertThat((Number) JsonPath.read(first, "$[0].id")).isNotEqualTo((Number) JsonPath.read(second, "$[0].id"));
+        assertThat(ingredients.count()).isEqualTo(2);
+    }
+
+    @Test void concurrentRetriesCommitOnlyOneBatch() throws Exception {
+        Browser owner = login("owner@example.com");
+        String body = batch(java.util.UUID.randomUUID().toString(), ingredient("계란", "2026-09-09", null));
+        var start = new java.util.concurrent.CountDownLatch(1);
+        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            java.util.concurrent.Callable<String> send = () -> {
+                start.await();
+                return mvc.perform(secure(post("/api/ingredients/batch"), owner).content(body))
+                    .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+            };
+            var first = executor.submit(send);
+            var second = executor.submit(send);
+            start.countDown();
+            assertThat(first.get(15, java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(second.get(15, java.util.concurrent.TimeUnit.SECONDS));
+        }
+        assertThat(ingredients.count()).isEqualTo(1);
+    }
+
+    private String batch(String requestId, String rows) {
+        return "{\"requestId\":\"" + requestId + "\",\"items\":[" + rows + "]}";
+    }
+
     private record Browser(MockHttpSession session, String token, String headerName) { }
 
     private Browser anonymous() throws Exception { return refresh(new MockHttpSession()); }

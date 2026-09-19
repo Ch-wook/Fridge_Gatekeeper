@@ -70,12 +70,12 @@ public class RecommendationService {
         boolean mismatch=false;
         // 같은 재료를 여러 번 샀다면 사용 가능한 수량을 합칩니다. 만료된 재고는 제외합니다.
         for (Ingredient ingredient:inventory) {
-            if (ingredient.getExpirationDate().isBefore(today)
+            if ((ingredient.getExpirationDate() != null && ingredient.getExpirationDate().isBefore(today))
                 || !IngredientNames.normalize(ingredient.getName()).equals(canonicalName)) continue;
             var converted=Quantities.convert(ingredient.getQuantity(),ingredient.getUnit(),item.getUnit());
             if (converted.isEmpty()) { mismatch=true; continue; }
             available=available.add(converted.get());
-            if (!ingredient.getExpirationDate().isAfter(today.plusDays(3)) && converted.get().signum()>0) urgent=true;
+            if (ingredient.getExpirationDate() != null && !ingredient.getExpirationDate().isAfter(today.plusDays(3)) && converted.get().signum()>0) urgent=true;
         }
         return new RecipeRecommendation.Requirement(item.getIngredientName(),required,available,
             required.subtract(available).max(BigDecimal.ZERO),item.getUnit(),urgent,mismatch);

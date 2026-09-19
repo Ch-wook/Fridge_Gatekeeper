@@ -32,7 +32,8 @@ class ChatServiceTest {
         ingredients = mock(IngredientService.class);
         recommendations = mock(RecommendationService.class);
         openAi = mock(OpenAiClient.class);
-        service = new ChatService(ingredients, recommendations, openAi);
+        service = new ChatService(ingredients, recommendations, openAi,
+            new AiRequestLimiter(java.time.Clock.systemUTC(), 5, 20, 100, 2));
         when(ingredients.list(7L, "expiration")).thenReturn(List.of(stock("계란", ExpiryStatus.SOON)));
     }
 
@@ -101,7 +102,7 @@ class ChatServiceTest {
         var recipe = recipe(1L, "계란밥", 15, 12, true, 1);
         when(recommendations.recommend(7L, 1)).thenReturn(List.of(recipe));
         when(openAi.available()).thenReturn(true);
-        when(openAi.reply(any(), anyList(), anyList())).thenReturn("계란밥을 추천해요.");
+        when(openAi.reply(any(), anyList(), anyList())).thenReturn(new OpenAiClient.Answer("계란밥을 추천해요.", List.of(recipe.id())));
 
         ChatDtos.Response result = service.reply(7L, request("추천해 줘"));
 
@@ -110,11 +111,41 @@ class ChatServiceTest {
         assertThat(result.recommendedRecipes()).containsExactly(recipe);
     }
 
+    @Test void explicitLocalModeNeverUsesConfiguredAi() {
+        when(openAi.available()).thenReturn(true);
+        var result = service.reply(7L, new ChatDtos.Request("추천", 1, List.of(), "LOCAL"));
+        assertThat(result.source()).isEqualTo("LOCAL");
+        verify(openAi, never()).reply(any(), anyList(), anyList());
+    }
+
+    @Test void failureReleasesConcurrencyPermitButAttemptsStillCount() {
+        when(openAi.available()).thenReturn(true);
+        when(openAi.reply(any(), anyList(), anyList()))
+            .thenThrow(new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "AI_TIMEOUT", "timeout"))
+            .thenReturn(new OpenAiClient.Answer("다시 연결됐어요.", List.of()));
+        assertThatThrownBy(() -> service.reply(7L, request("추천"))).isInstanceOf(ApiException.class);
+        assertThat(service.reply(7L, request("추천")).source()).isEqualTo("OPENAI");
+        verify(openAi, times(2)).reply(any(), anyList(), anyList());
+    }
+
+    @Test void aiCanChooseBeyondFirstThreeAndGeneralAnswersHaveNoUnrelatedCards() {
+        var candidates = List.of(recipe(1L, "계란밥", 15, 12, true, 1), recipe(2L, "계란국", 15, 12, false, 1),
+            recipe(3L, "계란말이", 15, 12, false, 1), recipe(4L, "두부부침", 15, 12, false, 1));
+        when(recommendations.recommend(7L, 1)).thenReturn(candidates);
+        when(openAi.available()).thenReturn(true);
+        when(openAi.reply(any(), anyList(), anyList())).thenReturn(new OpenAiClient.Answer("두부부침을 추천해요.", List.of(4L)))
+            .thenReturn(new OpenAiClient.Answer("두부를 약불에 익혀 주세요.", List.of()));
+        var question = new ChatDtos.Request("계란 말고 두부 요리", 1, List.of(new ChatDtos.Message("user", "계란 요리")));
+        assertThat(service.reply(7L, question).recommendedRecipes()).containsExactly(candidates.get(3));
+        verify(openAi).reply(eq(question), anyList(), eq(candidates));
+        assertThat(service.reply(7L, request("불은 어느 정도로 해?")).recommendedRecipes()).isEmpty();
+    }
+
     private static ChatDtos.Request request(String question) { return new ChatDtos.Request(question, 1, List.of()); }
 
     private static IngredientResponse stock(String name, ExpiryStatus status) {
         return new IngredientResponse(1L, name, Category.OTHER, BigDecimal.ONE, Unit.PIECE,
-            LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 9), StorageType.FRIDGE, 0, status, 0);
+            LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 9), StorageType.FRIDGE, 0, status, 0L);
     }
 
     private static RecipeRecommendation recipe(Long id, String name, int minutes, int protein, boolean urgent, int matched) {

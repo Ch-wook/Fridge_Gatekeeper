@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import IngredientRow from '../components/IngredientRow.jsx'
 import IngredientEditor from '../components/IngredientEditor.jsx'
+import IngredientAdder from '../components/IngredientAdder.jsx'
 import { Dialog, EmptyState, ErrorBox, Loading, PageHeading, SelectOptions } from '../components/UI.jsx'
 import useResource from '../hooks/useResource.js'
 import { categories, locations, statuses } from '../lib/format.js'
@@ -44,7 +45,7 @@ export default function IngredientsPage() {
       {loading && <Loading />}{error && <ErrorBox error={error} onRetry={reload} />}
       {data && <><p className="helper" aria-live="polite">전체 {data.length}개 중 {filtered.length}개</p>{filtered.length ? <ul className="ingredient-list">{filtered.map((item) => <IngredientRow item={item} key={item.id} onEdit={(ingredient) => setEditor({ ingredient })} onDelete={(ingredient) => { setDeleting(ingredient); setDeleteError(null) }} />)}</ul> : <EmptyState title={data.length ? '조건에 맞는 재료가 없어요' : '냉장고의 첫 재료를 기록해 볼까요?'} action={data.length ? <button className="button secondary" onClick={resetFilters}>검색과 필터 초기화</button> : <button className="button" onClick={() => setEditor({ ingredient: null })}>첫 식재료 추가</button>}>{data.length ? '검색어나 필터를 바꾸면 다른 재료를 찾을 수 있어요.' : '식재료를 추가하면 유통기한과 맞춤 레시피를 함께 확인할 수 있어요.'}</EmptyState>}</>}
     </section><p className="helper">안전: 4일 이상 남음 · 임박: 오늘부터 3일 이내 · 만료: 오늘 이전. ‘안전’은 날짜 기준이며, 실제 상태도 함께 확인해 주세요.</p>
-    {editor && <IngredientEditor ingredient={editor.ingredient} onClose={() => setEditor(null)} onSaved={saved} onReload={() => { setEditor(null); reload() }} />}
+    {editor && (editor.ingredient ? <IngredientEditor ingredient={editor.ingredient} onClose={() => setEditor(null)} onSaved={saved} onReload={() => { setEditor(null); reload() }} /> : <IngredientAdder inventory={data || []} onClose={() => setEditor(null)} onSaved={saved} />)}
     {deleting && <Dialog title="식재료 삭제" busy={deleteBusy} onClose={() => setDeleting(null)}><div className="dialog-body stack"><p className="confirmation-copy"><strong>{deleting.name}</strong>을(를) 냉장고에서 삭제할까요?</p><p className="muted">삭제한 재료는 추천에 반영되지 않아요. 필요하면 다시 추가할 수 있어요.</p>{deleteError && <ErrorBox error={deleteError} />}</div><div className="dialog-actions"><button className="button secondary" onClick={() => setDeleting(null)} disabled={deleteBusy}>취소</button><button className="button danger" onClick={remove} disabled={deleteBusy}>{deleteBusy ? '삭제 중…' : '삭제하기'}</button></div></Dialog>}
   </>
 }

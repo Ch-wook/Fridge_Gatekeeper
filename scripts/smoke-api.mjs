@@ -92,12 +92,14 @@ try {
   const aiStatus = await owner.request('GET', '/api/ai/status')
   assert.equal(aiStatus.status, 200)
   // 유료 AI 호출은 별도 LIVE_OPENAI=1 지정 시에만 실행합니다.
-  if (!aiStatus.data.available || process.env.LIVE_OPENAI === '1') {
-    const chat = await owner.request('POST', '/api/ai/chat', { message:'오늘 냉장고 털이 요리 추천해줘', servings:1, history:[] })
-    assert.equal(chat.status, 200)
-    assert.equal(chat.data.source, aiStatus.data.available ? 'OPENAI' : 'LOCAL')
+  {
+    const live = aiStatus.data.available && process.env.LIVE_OPENAI === '1'
+    const chat = await owner.request('POST', '/api/ai/chat', { message:'오늘 냉장고 털이 요리 추천해줘', servings:1, history:[], mode: live ? 'AUTO' : 'LOCAL' })
+    assert.equal(chat.status, 200, `채팅 오류: ${chat.data?.code || chat.status}`)
+    assert.equal(chat.data.source, live ? 'OPENAI' : 'LOCAL')
     assert.ok(chat.data.reply.length > 0)
     assert.ok(chat.data.recommendedRecipes.length > 0)
+    console.log(`PASS: 채팅 source=${chat.data.source}, model=${aiStatus.data.model || 'LOCAL'}, replyLength=${chat.data.reply.length}`)
   }
   console.log('PASS: 실제 MySQL 회원/세션/CSRF/CRUD/소유자 격리/날짜/추천/단위/인분/채팅 검증')
 } finally {

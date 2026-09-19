@@ -2,6 +2,7 @@
 
 이 저장소에서 작업을 시작할 때 [Codex 인수인계 문서](docs/CODEX_HANDOFF.md)를 먼저 읽으세요.
 실행 방법은 [README](README.md), API 계약은 [docs/api.md](docs/api.md), 기존 검증 결과는 [STEP 11](docs/step-11.md)에 있습니다.
+발표 자료는 [PRESENT.md](PRESENT.md)입니다. 기능·구조가 바뀌면 실제 구현과 일치하도록 함께 갱신하세요.
 
 ## 프로젝트 기준
 

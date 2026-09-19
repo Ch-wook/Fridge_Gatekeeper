@@ -19,10 +19,15 @@ public final class ChatDtos {
         @Min(value = 1, message = "인분은 1 또는 2로 선택해 주세요.")
         @Max(value = 2, message = "인분은 1 또는 2로 선택해 주세요.") int servings,
         @Size(max = 10, message = "이전 대화는 최근 10개까지만 보낼 수 있습니다.")
-        List<@NotNull @Valid Message> history
+        List<@NotNull @Valid Message> history,
+        @Pattern(regexp = "AUTO|LOCAL", message = "대화 방식을 확인해 주세요.") String mode
     ) {
         public Request {
             history = history == null ? List.of() : history;
+            mode = mode == null ? "AUTO" : mode;
+        }
+        public Request(String message, int servings, List<Message> history) {
+            this(message, servings, history, "AUTO");
         }
     }
 
@@ -32,6 +37,6 @@ public final class ChatDtos {
         @Size(max = 2000, message = "이전 대화는 각각 2,000자 이내여야 합니다.") String content
     ) { }
 
-    public record Status(boolean available) { }
+    public record Status(boolean available, String model) { }
     public record Response(String reply, String source, List<RecipeRecommendation> recommendedRecipes) { }
 }

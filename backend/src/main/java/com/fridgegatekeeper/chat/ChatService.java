@@ -17,15 +17,19 @@ public class ChatService {
     private final IngredientService ingredients;
     private final RecommendationService recommendations;
     private final OpenAiClient openAi;
+    private final AiRequestLimiter limiter;
 
-    public ChatService(IngredientService ingredients, RecommendationService recommendations, OpenAiClient openAi) {
+    public ChatService(IngredientService ingredients, RecommendationService recommendations, OpenAiClient openAi,
+                       AiRequestLimiter limiter) {
         this.ingredients = ingredients;
         this.recommendations = recommendations;
         this.openAi = openAi;
+        this.limiter = limiter;
     }
 
     /** 설정 여부만 확인하며 비용이 발생하는 외부 API를 호출하지 않습니다. */
     public boolean available() { return openAi.available(); }
+    public String model() { return available() ? openAi.model() : null; }
 
     public ChatDtos.Response reply(Long userId, ChatDtos.Request request) {
         RecommendationService.validateServings(request.servings());
@@ -33,8 +37,15 @@ public class ChatService {
         List<RecipeRecommendation> ranked = recommendations.recommend(userId, request.servings());
         List<RecipeRecommendation> selected = select(ranked, request.message());
         // 트랜잭션은 각각의 조회에서 끝나므로 AI 응답을 기다리는 동안 DB 연결을 잡아두지 않습니다.
-        if (openAi.available()) {
-            return new ChatDtos.Response(openAi.reply(request, inventory, selected), "OPENAI", selected);
+        if (!"LOCAL".equals(request.mode()) && openAi.available()) {
+            try (var permit = limiter.acquire(userId)) {
+                List<RecipeRecommendation> candidates = ranked.stream().limit(40).toList();
+                OpenAiClient.Answer answer = openAi.reply(request, inventory, candidates);
+                // 수량·단위·조리법은 AI 생성값으로 덮어쓰지 않고 검증한 후보 ID에 연결합니다.
+                var byId = candidates.stream().collect(java.util.stream.Collectors.toMap(RecipeRecommendation::id, recipe -> recipe));
+                List<RecipeRecommendation> chosen = answer.recipeIds().stream().map(byId::get).toList();
+                return new ChatDtos.Response(answer.reply(), "OPENAI", chosen);
+            }
         }
         return new ChatDtos.Response(localReply(request, inventory, selected), "LOCAL", selected);
     }
@@ -65,6 +76,9 @@ public class ChatService {
                 + request.servings() + "인분에 맞춰 메뉴를 추천해 드릴게요.").toString();
         }
         long expired = inventory.stream().filter(item -> item.status() == ExpiryStatus.EXPIRED).count();
+        if (inventory.stream().anyMatch(item -> item.status() == ExpiryStatus.UNKNOWN)) {
+            reply.append("기한을 등록하지 않은 재료는 사용 전에 실제 상태를 확인해 주세요. ");
+        }
         if (expired > 0) reply.append("유통기한이 지난 재료 ").append(expired).append("건은 추천에서 제외했어요. ");
         if (selected.isEmpty()) {
             return reply.append("지금 사용할 수 있는 재료와 연결되는 등록 레시피가 없어요. "

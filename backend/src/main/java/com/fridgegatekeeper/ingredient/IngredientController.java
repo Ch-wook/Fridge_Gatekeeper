@@ -11,7 +11,11 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/ingredients")
 public class IngredientController {
     private final IngredientService ingredients;
-    public IngredientController(IngredientService ingredients) { this.ingredients = ingredients; }
+    private final IngredientBatchService batches;
+    public IngredientController(IngredientService ingredients, IngredientBatchService batches) {
+        this.ingredients = ingredients;
+        this.batches = batches;
+    }
 
     @GetMapping
     public List<IngredientResponse> list(Authentication authentication,
@@ -33,6 +37,11 @@ public class IngredientController {
     public IngredientResponse update(Authentication authentication, @PathVariable Long id,
                                      @Valid @RequestBody IngredientRequest request) {
         return ingredients.update(CurrentUser.id(authentication), id, request);
+    }
+
+    @PostMapping("/batch") @ResponseStatus(HttpStatus.CREATED)
+    public List<IngredientResponse> createBatch(Authentication authentication, @Valid @RequestBody IngredientBatchRequest request) {
+        return batches.create(CurrentUser.id(authentication), request);
     }
 
     @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT)

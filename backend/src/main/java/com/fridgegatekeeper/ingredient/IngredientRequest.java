@@ -15,7 +15,7 @@ public record IngredientRequest(
     @Digits(integer = 9, fraction = 3, message = "수량은 정수 9자리, 소수 3자리까지 입력할 수 있습니다.") BigDecimal quantity,
     @NotNull(message = "수량 단위를 선택해 주세요.") Unit unit,
     @NotNull(message = "구매 날짜를 입력해 주세요.") LocalDate purchaseDate,
-    @NotNull(message = "유통기한을 입력해 주세요.") LocalDate expirationDate,
+    LocalDate expirationDate,
     @NotNull(message = "보관 위치를 선택해 주세요.") StorageType storageType,
     @PositiveOrZero(message = "수정 버전은 0 이상이어야 합니다.") Long version
 ) { }

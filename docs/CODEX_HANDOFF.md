@@ -1,13 +1,27 @@
 # Codex 인수인계 — 냉장고 지킴이
 
-> 작성: 2026-09-15. 구현 기준 커밋: `21bd1e19803a272460b4c9741559bd7f9e393244`.
+> 작성: 2026-09-15, 갱신: 2026-09-19. 초기 구현 기준 커밋은 `21bd1e1`이며, 후속 AI·일괄 등록·발표 문서 변경을 반영했습니다. 최신 커밋과 작업 트리·원격 상태는 Git에서 확인하세요.
 > 이 문서는 이전 대화 없이 다음 Codex가 작업을 이어가기 위한 기록입니다. 코드와 환경이 이후 바뀌었다면 현재 코드·Git 상태·사용자의 최신 요청을 우선하세요.
 
 ## 1. 현재 상태와 먼저 읽을 문서
 
 사용자는 중단된 냉장고 식재료 관리·레시피 서비스를 README 기준으로 완성해 달라고 요청했습니다. 요청에 적힌 `RENAMD.md`는 실제 저장소의 [README.md](../README.md)를 뜻하는 것으로 해석해 작업했습니다.
 
-README의 MVP 기능 구현, 누락된 채팅 서버, 프론트엔드 보완, Windows 실행 환경, 자동·실서버 검증과 단계별 문서 정리를 완료했습니다. 구현 변경은 GitHub `main`에 푸시했습니다. 배포 서버 구축이나 실제 OpenAI 유료 호출까지 완료했다는 의미는 아닙니다.
+README의 MVP 기능 구현, 누락된 채팅 서버, 프론트엔드 보완, Windows 실행 환경, 자동·실서버 검증과 단계별 문서 정리를 완료했습니다. 초기 구현과 인수인계 문서는 GitHub `main`에 푸시했습니다. 이후 GPT-5 mini 연결·답변 관련성·식재료 선택 기능을 추가했고, 사용자는 등록 과정 재설계와 문서 갱신·GitHub 푸시를 요청했습니다. 이번 커밋 범위에는 기존 미커밋 AI 변경과 발표 문서도 함께 포함합니다. 운영 배포는 수행하지 않았습니다.
+
+**최신 구현(2026-09-18, 문서 마무리 09-19):** `IngredientAdder`로 다중 선택·장본 목록 붙여넣기·최대 50개 한 번 저장을 구현했습니다. 대시보드와 내 냉장고에서 바로 열고, 데스크톱은 선택/편집을 나란히, 모바일은 수량·기한 화면으로 전환합니다. 이름·수량 요약과 저장 버튼은 하단에 유지합니다. `IngredientEditor`는 기존 재고 수정에 사용합니다. 날짜는 선택 입력이고 구매일은 오늘로 시작합니다.
+
+`ingredientBatch.js`는 외부 AI 없이 이름·명시된 수량/단위·정확한 별칭을 해석합니다. 오타 후보·잘못된 줄·중복 이름은 확인하게 하고 일부만 적용하지 않습니다. 기존 선택과 중복된 붙여넣기는 원래 수량을 유지합니다. API `/api/ingredients/batch`는 UUID와 1~50개 items를 받고 사용자 행 잠금·전체 트랜잭션·V4 완료 기록으로 동시 재시도도 한 번만 저장합니다. 같은 번호/다른 내용은 409, 같은 내용은 최초 응답 스냅샷을 반환하며 이후 삭제한 재고를 복구하지 않습니다. 기록 자동 만료는 아직 없습니다.
+
+**이번 검증:** Maven verify 69개, 프론트 테스트 18개·lint·build, 데스크톱/모바일 E2E 12개, 실제 MySQL LOCAL HTTP smoke 통과. V4 실제 DB 적용과 화면 캡처를 확인했습니다. 유료 AI 호출은 새로 수행하지 않았습니다. 발표 자료 [PRESENT.md](../PRESENT.md), README, API·DB·STEP 4/8/11 문서를 갱신했습니다. 세부 결과와 실패 후 수정 과정은 STEP 11에 있습니다.
+
+**이전 AI 요청 범위:** GPT-5 mini AI 연결과 기존 기능 완성. 사용자는 장보기 목록·재고 자동 차감 추가 대신 이 범위를 선택했습니다. 현재 키는 Git에서 제외된 루트 `.env`에만 보관하며 Windows ACL을 현재 사용자와 SYSTEM으로 제한했습니다. 키 내용을 출력하거나 인수인계에 복사하지 마세요. 키가 대화에 공유됐으므로 폐기·교체를 안내했으며, 교체는 `scripts/setup-openai.ps1`의 숨김 입력으로 할 수 있습니다.
+
+**이전 식재료 선택 개선:** 식재료를 목록에서 선택하고 유통기한만 선택 입력하도록 개선, 모바일 선택 UI 개선, 질문·재료와 맞지 않는 AI 답변 및 표기 문제 수정. 38종 검색·별칭·한 글자 차이 후보, 수량 ±, 분류 필터를 구현했습니다. 초기 한 개 선택 후 목록을 접던 신규 등록 화면은 위 다중 선택 흐름으로 교체했습니다. V3에서 유통기한 NULL을 허용하며 UNKNOWN/unknownCount로 구분합니다. 기존 V1·V2와 사용자 데이터는 그대로 유지했습니다. 새 API 필드와 동작은 [api.md](api.md)를 참고하세요.
+
+AI에는 현재 재고와 전체 레시피 후보(최대 40개)를 전달하고, strict JSON Schema `{reply,recipeIds}`로 받아 후보 ID를 검증한 뒤 카드에 연결합니다. LOCAL은 이전 규칙 기반 선택을 유지합니다. 실제 검증 중 BLOCK/UNKNOWN과 1.000 같은 표기가 답변에 섞이는 것을 확인하여, 외부 문맥의 재료 단위·상태·수량부터 한국어 표시값으로 정리했습니다. 최종 유료 3문항 검증에서 오타 질문→계란말이, 후속 계란·고기 제외→두부김치, 재고 조회→두부 1모·카드 없음까지 통과했습니다. 오타·제외 조건을 모든 질문에 완벽히 처리한다고 보장하지는 않습니다.
+
+**현재 PC 실행 설정:** 웹 `http://127.0.0.1:5173`, 백엔드 `127.0.0.1:8081`, DB `3307`. 루트 `.env`의 SERVER_PORT=8081을 Vite도 읽습니다. 09-18 검증에서 프로젝트 프로세스를 확인한 뒤 최신 서버를 같은 포트로 재시작했습니다. 기본 설정은 8080이며 이 PC만 .env에서 8081을 사용합니다. 이전 세션의 실행 여부나 PID를 재사용하지 말고 시작·종료 전 현재 소유 경로와 포트를 확인하세요.
 
 | 항목 | 기준 |
 | --- | --- |
@@ -66,7 +80,7 @@ README의 MVP 기능 구현, 누락된 채팅 서버, 프론트엔드 보완, Wi
 | 레시피 | `backend/src/main/java/com/fridgegatekeeper/recipe/` | 레시피·재료 Entity, 조회 API |
 | 채팅 | `backend/src/main/java/com/fridgegatekeeper/chat/` | LOCAL 응답, OpenAI HTTP 호출 |
 | 공통 | `backend/src/main/java/com/fridgegatekeeper/common/` | 오류 응답, Clock, `/api/health` |
-| DB 생성·seed | `backend/src/main/resources/db/migration/` | `V1__initial_schema.sql`, `V2__seed_recipes.sql` |
+| DB 생성·seed | `backend/src/main/resources/db/migration/` | V1 스키마, V2 레시피, V3 선택적 기한, V4 일괄 등록 완료 기록 |
 | 서버 설정 | [application.yml](../backend/src/main/resources/application.yml) | DB·세션·한국 시간·OpenAI 설정 |
 | 화면 진입 | [App.jsx](../frontend/src/App.jsx), `frontend/src/lib/router.js` | 세션 확인·로그아웃, 경로에 따른 화면 선택 |
 | 화면 | `frontend/src/pages/` | Auth, Dashboard, Ingredients, Recipes, Chat |
@@ -78,7 +92,7 @@ README의 MVP 기능 구현, 누락된 채팅 서버, 프론트엔드 보완, Wi
 
 프론트엔드는 JavaScript JSX이며 TypeScript나 React Router를 사용하지 않습니다. `router.js`가 History API와 `popstate`를 연결합니다. `WelcomePage.jsx`는 초기 단계 화면 기록이며 현재 인증 이후 서비스의 진입은 `App.jsx`입니다.
 
-DB 테이블은 `users`, `ingredients`, `recipes`, `recipe_ingredients`입니다. JPA `ddl-auto: validate`와 Flyway를 함께 사용합니다. 이미 실행된 V1·V2를 변경하면 기존 DB와 체크섬이 충돌할 수 있으므로 DB 변경은 후속 마이그레이션으로 진행합니다.
+DB 테이블은 `users`, `ingredients`, `recipes`, `recipe_ingredients`, `ingredient_batch_requests`입니다. JPA `ddl-auto: validate`와 Flyway를 함께 사용합니다. V3는 선택적 유통기한, V4는 일괄 등록 완료 기록입니다. 이미 실행된 V1~V4를 변경하면 기존 DB와 체크섬이 충돌할 수 있으므로 추가 DB 변경은 V5 이후 마이그레이션으로 진행합니다.
 
 ## 4. 유지해야 하는 동작·계약
 
@@ -95,6 +109,7 @@ DB 테이블은 `users`, `ingredients`, `recipes`, `recipe_ingredients`입니다
 
 - 서버는 주입된 `Clock`과 `Asia/Seoul` 기준 날짜를 사용합니다. 오늘 만료인 재료는 아직 만료가 아닙니다.
 - `EXPIRED`: 오늘 이전. `SOON`: 오늘부터 3일 뒤까지. `SAFE`: 4일 이상 남음. 오늘까지의 수는 SOON 집계에도 포함됩니다.
+- `UNKNOWN`: 유통기한 미등록(null). daysUntilExpiration도 null이며 안전·오늘·임박·만료에 섞지 않습니다. 추천 수량에는 포함하되 임박으로 간주하지 않습니다. 사용 전 상태를 확인하도록 화면·채팅에 안내합니다.
 - 만료된 재료는 추천 재고에서 제외합니다. 같은 이름으로 인식되는 유효 재고는 수량을 합산합니다.
 - kg↔g, L↔ml 환산만 지원합니다. 팩↔g 등 알 수 없는 환산은 추측하지 않고 `unitMismatch`로 알립니다.
 - `IngredientNames`에 정의된 일부 동의어를 지원하며 모든 자유 입력 이름을 이해하는 것은 아닙니다.
@@ -118,7 +133,7 @@ DB 테이블은 `users`, `ingredients`, `recipes`, `recipe_ingredients`입니다
 
 [STEP 10](step-10.md)에 파일별 설명과 계약이 있습니다. 실제 경로는 `/api/ai/status`, `/api/ai/chat`이고 Java 패키지명은 `chat`입니다.
 
-`ChatService`는 매 질문마다 현재 사용자 재고와 추천을 읽습니다. API 키가 없으면 외부 요청 없이 LOCAL 답변을 만듭니다. 보유 재료를 활용하는 메뉴 최대 3개를 고르며, 이번 질문의 임박·간단·단백질 키워드에 제한적으로 반응합니다. LOCAL은 대화 문맥 전체, 임의 시간 조건, 알레르기·재료 제외 조건 등을 이해하는 AI가 아닙니다.
+`ChatService`는 매 질문마다 현재 사용자 재고와 추천을 읽습니다. API 키가 없거나 요청의 `mode=LOCAL`이면 외부 요청 없이 LOCAL 답변을 만듭니다. `mode` 생략·null은 AUTO이며 그 외에는 AUTO/LOCAL만 허용합니다. LOCAL은 보유 재료를 활용하는 메뉴 최대 3개를 고르고 이번 질문의 임박·간단·단백질 키워드에 제한적으로 반응합니다. 대화 문맥 전체나 임의 시간 조건·알레르기·제외 조건 등을 이해하는 AI는 아닙니다. OPENAI 카드는 전체 후보 중 모델이 고른 ID를 서버가 검증하여 연결하며 화면에는 ‘함께 볼 수 있는 레시피’로 표시합니다.
 
 키가 있으면 `OpenAiClient`가 JDK HttpClient와 Jackson 3으로 Responses API를 호출합니다. `available`은 비어 있지 않은 키 설정 여부만 의미하며 유효성·잔액·접근 권한 검사가 아닙니다.
 
@@ -128,12 +143,16 @@ DB 테이블은 `users`, `ingredients`, `recipes`, `recipe_ingredients`입니다
 | 인분 | 1 또는 2 |
 | 이전 대화 | 최대 10개, 역할 user/assistant, 각 내용 최대 2,000자 |
 | 재고 전송 | 유통기한 순 최대 100건, 잘림 여부 별도 표시 |
-| 추천 전송·응답 카드 | 서버가 계산한 최대 3개 |
-| 기본 모델 | `OPENAI_MODEL`, 기본 `gpt-4.1-mini` |
-| 외부 요청 | `/v1/responses`, `store: false`, `max_output_tokens: 1600` |
-| 시간 제한 | 연결 10초, 요청 기본 35초, 프론트엔드 요청 60초 |
+| 추천 전송·응답 카드 | 후보 최대 40개 전송, AI가 선택한 ID 최대 3개 검증 후 서버 카드에 연결 |
+| 기본 모델 | `OPENAI_MODEL`, 기본 `gpt-5-mini` |
+| 외부 요청 | `/v1/responses`, `store: false`, `max_output_tokens: 2400`(추론 포함). GPT-5 계열 `reasoning.effort=low`, `text.verbosity=low` |
+| 시간 제한 | 연결 10초, 요청 기본 45초, 프론트엔드 요청 60초 |
 | 출력 처리 | 모든 assistant 메시지의 `output_text` 수집, 거절 텍스트 전달 |
 | 실패 처리 | 503과 구분된 오류 코드, 성공한 AI 응답이나 자동 LOCAL 응답으로 위장하지 않음 |
+
+`GET /api/ai/status`는 `{available, model}`을 반환합니다. 키가 없으면 model은 null입니다. UI에서 대화 방식을 선택하고, 실패한 질문을 사용자가 LOCAL로 다시 요청할 수 있습니다. OpenAI 429의 결제·잔액 오류는 `AI_QUOTA_EXCEEDED`, 일시적 과부하는 `AI_RATE_LIMITED`로 구분합니다. 원문 오류는 반환·기록하지 않습니다. 외부 HTTP 주소는 거절하고 loopback 모의 서버만 예외로 허용합니다.
+
+`AiRequestLimiter`는 외부 호출 전에 사용자별 최근 60초 5회·서버 전체 60초 20회·한국 날짜 하루 100회·동시 2개·사용자 동시 1개를 기본으로 제한합니다. 거절은 429이고 시도한 외부 호출은 실패해도 집계합니다. `try-with-resources`로 동시 처리 자리를 해제합니다. LOCAL은 제한을 거치지 않습니다. 설정은 README의 `AI_*` 환경 변수를 참고하세요. 단일 프로세스 메모리이므로 재시작 시 초기화되며 운영 결제 상한이나 여러 서버의 통합 제한은 아닙니다.
 
 회원 ID·이메일·비밀번호·재고 ID·구매 날짜는 재고 문맥에 붙여 보내지 않습니다. 사용자가 대화에 직접 쓴 내용은 질문·history에 포함됩니다. 외부 API 키는 서버에서만 읽습니다. `store: false`가 외부 제공자의 모든 로그·보관 정책을 없앤다는 뜻은 아닙니다.
 
@@ -149,7 +168,7 @@ DB 테이블은 `users`, `ingredients`, `recipes`, `recipe_ingredients`입니다
 - Docker 실행 도구가 없어 실제 Docker 기동 검증은 하지 않았습니다. 저장소의 Compose 구성은 MySQL 8.4입니다.
 - Chrome 실행 파일은 `C:/Program Files/Google/Chrome/Application/chrome.exe`를 사용했습니다.
 
-이 환경은 Git에 복제되지 않습니다. 기존 대화에서 서버가 실행 중이었다고 해도 지금 실행 중이라고 가정하지 마세요. 과거 PID로 프로세스를 종료하지 말고 현재 포트와 명령행을 확인하세요. 마지막 실서버 검증에서는 패키징된 JAR를 8080, Vite 개발 서버를 5173, 프로젝트 MySQL을 3307로 실행했습니다.
+이 환경은 Git에 복제되지 않습니다. 기존 대화에서 서버가 실행 중이었다고 해도 지금 실행 중이라고 가정하지 마세요. 과거 PID로 프로세스를 종료하지 말고 현재 포트와 명령행을 확인하세요. 최근 일괄 등록 검증은 Maven 실행 백엔드 8081, Vite 개발 서버 5173, 프로젝트 MySQL 3307을 사용했습니다. 초기 패키징된 JAR 실행 검증의 8080과 구분하세요.
 
 ### 로컬 파일
 
@@ -190,7 +209,7 @@ PowerShell의 `$ErrorActionPreference='Stop'`은 네이티브 stderr를 조기�
 ```powershell
 git status --short
 git log -3 --oneline
-Get-NetTCPConnection -State Listen -LocalPort 3307,5173,8080 -ErrorAction SilentlyContinue
+Get-NetTCPConnection -State Listen -LocalPort 3307,5173,8080,8081 -ErrorAction SilentlyContinue
 ```
 
 프로젝트 루트에서 실행합니다. JDK 준비는 필요할 때만 실행하고 백엔드·프론트엔드는 각각 별도 터미널을 사용합니다.
@@ -210,7 +229,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/start-backend.ps
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/start-frontend.ps1
 ```
 
-웹은 `http://127.0.0.1:5173`, 서버 확인은 `http://127.0.0.1:8080/api/health`입니다. health 응답은 DB·OpenAI의 전체 연결 상태를 검사하는 진단은 아닙니다.
+웹은 `http://127.0.0.1:5173`, 현재 PC의 서버 확인은 `http://127.0.0.1:8081/api/health`입니다. 별도 설정이 없는 새 환경의 서버 기본 포트는 8080입니다. health 응답은 DB·OpenAI의 전체 연결 상태를 검사하는 진단은 아닙니다.
 
 ```powershell
 # 기본 자동 테스트와 빌드. 실제 MySQL 없이 H2로 실행 가능
@@ -242,7 +261,15 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/stop-local-db.ps
 
 ## 8. 검증 이력과 의미
 
-최종 구현 검증은 2026-09-14~15에 수행했습니다. 아래는 과거 구현의 통과 기록이며 이 인수인계 문서 작성만을 위해 애플리케이션 전체 테스트를 다시 실행했다는 의미가 아닙니다.
+**2026-09-18 일괄 등록 변경:** Maven verify 69개, 프론트 18개·lint·build, E2E 12개 통과. 실제 MySQL V4 적용, 부분 실패 방지, 동시 재시도 중복 방지, 응답 유실 후 같은 UUID로 재시도하는 브라우저 흐름을 검증했습니다. 내장 브라우저 연결이 없어 저장소 Playwright를 사용했습니다. Vite의 변경 전 CSS 캐시를 재시작으로 해소하고 textarea 접근성 이름과 테스트 상태 선택자를 보완했습니다. 아래 AI 유료 검증은 이전 기록입니다.
+
+**식재료 선택·AI 답변 후속 변경:** Maven verify 63개, 프론트 테스트 12개와 lint·build, E2E 8개 통과. 마지막 AI 문맥의 한국어 표기 변경 후 채팅 관련 37개를 다시 실행해 통과했습니다. 실제 MySQL에서 V3 적용과 기한 미등록 저장·조회·수정·삭제를 검증했습니다. 최종 유료 품질 검증은 웹 프록시(5173→8081)를 통해 3문항 모두 통과했고 약 8.4초/7.7초/2.4초였습니다. 직전 유료 3문항 검증은 내부 코드·소수점 표기 때문에 실패하여 수정했습니다. 유료 검증을 재현하는 [check-ai-quality.mjs](../scripts/check-ai-quality.mjs)는 LIVE_OPENAI=1을 명시해야 실행되며, 결과는 Git 제외 `.local/ai-quality-result.json`에 저장됩니다. 테스트 재료는 정리하지만 ai-quality- 접두사 테스트 회원은 남습니다.
+
+**2026-09-17 초기 AI 연결 검증:** Maven verify 59개, 프론트 테스트 8개, lint·build, 데스크톱·모바일 E2E 6개 모두 통과했습니다. 당시 `LIVE_OPENAI=1 node scripts/smoke-api.mjs`로 GPT-5 mini의 678자 응답과 `source=OPENAI`를 확인했습니다. 소스·빌드·로컬 앱 로그 131개에 제공된 키가 없고 Vite의 `.env` 접근으로 노출되지 않음을 검사했습니다. 이후의 식재료 선택·AI 문맥 개선 검증은 위 최신 기록을 참고하세요.
+
+`verify.ps1`에서 백엔드 단계는 통과했지만 Vite 실행 중 `npm ci`가 EPERM(네이티브 모듈 파일 잠금)으로 실패했습니다. 프로젝트 Vite 프로세스만 종료한 뒤 frontend에서 ci·test·lint·build를 순서대로 실행하여 모두 통과했습니다. Windows 전체 검증 전 개발 서버를 종료하세요. 백엔드 `.env` 로더의 `String.Split` 오버로드 문제가 처음 실제 `.env` 사용에서 드러나 `-split '=', 2`로 수정하고 재시작했습니다. 서버는 현재 `127.0.0.1`에만 바인딩하며 외부 배포 시 `SERVER_ADDRESS`를 명시해야 합니다.
+
+아래는 2026-09-14~15의 **과거 구현 검증**입니다. DB 포트 변경·JAR 직접 실행 등 별도 OS 검증을 최신 변경 후 다시 수행했다는 의미는 아닙니다.
 
 | 검사 | 결과 | 재현 위치 |
 | --- | --- | --- |
@@ -282,7 +309,7 @@ DB 스크립트 검증에서는 재료를 저장한 뒤 3307→3308→3307로 �
 
 현재 요청했던 README 기준의 MVP에 알려진 필수 미구현 기능은 남기지 않았습니다. 다음 항목은 완료했다고 간주하지 마세요.
 
-- **실제 OpenAI API 호출:** 키를 사용한 유료 연동 검증은 하지 않았습니다. localhost 모의 HTTP 서버와 LOCAL 모드를 검증했습니다. 실제 연동은 사용할 키·모델·한도 설정이 필요합니다.
+- **OpenAI 운영 설정:** 2026-09-17 실제 GPT-5 mini 호출은 확인했습니다. 이후 키 교체·잔액·모델 권한 변경이나 다른 PC에서의 연결 성공까지 보장하지 않습니다. 키 교체 후 백엔드를 재시작하세요. 여러 서버용 요청 제한·금액 기반 차단은 별도 구현 범위입니다.
 - **Docker MySQL 8.4:** Compose 파일은 존재하지만 이번 PC에서 실행하지 않았습니다. 실제 검증 DB는 MySQL 8.0.44입니다.
 - **운영 배포:** HTTPS, 리버스 프록시, 도메인, 운영 DB·백업, 배포 자동화는 구성하지 않았습니다. GitHub 푸시는 애플리케이션 배포가 아닙니다.
 - **다른 브라우저·실물 모바일:** Chrome 계열의 데스크톱·모바일 에뮬레이션을 확인했습니다. Safari·Firefox·실물 기기 검증 결과는 없습니다.
