@@ -18,7 +18,13 @@ Docker 환경은 MySQL 8.4, 현재 Windows 로컬 환경은 설치된 MySQL 8.0.
 ## 빠른 실행 — 현재 Windows 작업 폴더
 
 JDK 21과 Node.js 24 LTS를 사용합니다. Maven은 Wrapper가 내려받습니다.
-명령은 모두 프로젝트 루트에서 실행합니다.
+아래 명령은 PowerShell을 새로 열었을 때도 동작하도록 매번 프로젝트 루트로 이동한 뒤 실행합니다.
+
+```powershell
+Set-Location "C:\Users\HJ\Documents\Fridge_Gatekeeper\Fridge_Gatekeeper"
+```
+
+서버는 각각 별도의 PowerShell 터미널에서 하나씩만 실행하세요. 이미 실행 중인 서버를 다시 시작하면 `8081` 또는 `5173` 포트 충돌이 발생합니다.
 
 현재 작업 폴더에는 프로젝트 전용 JDK 21이 `.local/`에 준비되어 있으며 실행 스크립트가 자동으로 선택합니다.
 다른 Windows PC에서 JDK 21이 없다면 다음 명령으로 공식 Eclipse Temurin 배포본을 내려받습니다.
@@ -28,9 +34,10 @@ JDK 21과 Node.js 24 LTS를 사용합니다. Maven은 Wrapper가 내려받습니
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/setup-java.ps1
 ```
 
-**1. MySQL 시작**
+**1. 터미널 1 — MySQL 시작**
 
 ```powershell
+Set-Location "C:\Users\HJ\Documents\Fridge_Gatekeeper\Fridge_Gatekeeper"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/start-db.ps1
 ```
 
@@ -46,30 +53,51 @@ MySQL 설치 위치 또는 로컬 포트를 직접 지정할 수도 있습니다
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/start-local-db.ps1 -MySqlBin "C:/Program Files/MySQL/MySQL Server 8.0/bin" -Port 3307
 ```
 
-**2. 터미널 1 — 백엔드**
+**2. 터미널 2 — 백엔드**
 
 ```powershell
+Set-Location "C:\Users\HJ\Documents\Fridge_Gatekeeper\Fridge_Gatekeeper"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/start-backend.ps1
 ```
 
 [상태 확인](http://127.0.0.1:8080/api/health)에서 `{"status":"UP","service":"fridge-gatekeeper"}`가 표시됩니다.
-위 링크는 기본 포트 8080 기준입니다. 현재 PC는 `.env`의 `SERVER_PORT=8081`을 사용하므로 [8081 상태 확인](http://127.0.0.1:8081/api/health)을 사용합니다. 웹 접속 주소는 동일하게 5173입니다.
+위 링크는 기본 포트 8080 기준입니다. 현재 PC는 루트 `.env`의 `SERVER_PORT=8081`을 사용하므로 [8081 상태 확인](http://127.0.0.1:8081/api/health)을 사용합니다. 로그에 `Tomcat started on port 8081`이 표시될 때까지 기다립니다.
 첫 실행에 Flyway가 테이블과 레시피를 생성합니다. 재시작해도 회원·재고는 유지됩니다.
 
-**3. 터미널 2 — 프론트엔드**
+**3. 터미널 3 — 프론트엔드**
 
 ```powershell
+Set-Location "C:\Users\HJ\Documents\Fridge_Gatekeeper\Fridge_Gatekeeper"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/start-frontend.ps1
 ```
 
+첫 실행 또는 의존성이 바뀐 경우 `npm ci`가 먼저 실행되므로 완료될 때까지 기다립니다. Vite가 시작되면
 [http://127.0.0.1:5173](http://127.0.0.1:5173)에서 회원가입 후 식재료를 등록하세요.
 이메일·비밀번호·닉네임은 직접 설정하며 미리 만들어진 로그인 계정은 없습니다.
-각 서버는 해당 터미널의 `Ctrl+C`로 종료합니다.
+DB는 터미널을 닫아도 백그라운드에서 유지됩니다. 백엔드와 프론트엔드는 각각 해당 터미널의 `Ctrl+C`로 종료하고, DB까지 종료할 때는 아래 명령을 별도 터미널에서 실행합니다.
 
 로컬 MySQL 종료는 다음 명령을 사용합니다. 데이터는 보존됩니다.
 
 ```powershell
+Set-Location "C:\Users\HJ\Documents\Fridge_Gatekeeper\Fridge_Gatekeeper"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/stop-local-db.ps1
+```
+
+### 실행 중인지 확인
+
+```powershell
+Test-NetConnection 127.0.0.1 -Port 3307
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8081/api/health
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5173
+```
+
+`8081` 상태 확인이 성공하면 백엔드를 다시 실행하지 않습니다. 포트 충돌이 발생하면 기존 프로젝트 터미널에서 `Ctrl+C`를 누른 뒤 다시 시작하세요. 터미널을 찾을 수 없을 때는 먼저 포트 소유자를 확인하고, 프로젝트의 `java.exe` 또는 `node.exe`임을 확인한 경우에만 해당 PID를 종료합니다.
+
+```powershell
+Get-NetTCPConnection -LocalPort 8081,5173 -State Listen |
+	Select-Object LocalPort,OwningProcess
+Get-Process -Id <PID>
+Stop-Process -Id <PID>
 ```
 
 ## 다른 PC 또는 macOS/Linux
